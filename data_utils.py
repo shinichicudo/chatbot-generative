@@ -83,7 +83,15 @@ def build_vocab(filename,is_question = True):
                 vocab[token] += 1
     # sort by frequency
     # sorted_vocab <type "list">
+    # 以value倒序排列  list<vocab.key>
     sorted_vocab = sorted(vocab, key=vocab.get, reverse=True)
+    exclude_path = os.path.join(config.DATA_PATH, 'exclude.enc')
+
+    exclude_file = open(exclude_path, 'r', encoding='utf-8')
+    exclude_list = []
+    for line in exclude_file:
+        exclude_list.append(line.strip())
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("<pad>" + "\n")
         f.write("<unk>" + "\n")
@@ -95,6 +103,8 @@ def build_vocab(filename,is_question = True):
             # should be dropped.
             if vocab[word] < config.THRESHOLD:
                 return index
+            if is_question and word in exclude_list:
+                continue
             f.write(word + "\n")
             index += 1
     return index
@@ -197,6 +207,7 @@ def load_data(enc_filename, dec_filename):
         if (i + 1) % 10000 == 0:
             print("Bucketing conversation number", i + 1)
         # covert digit string to integer
+        # 读行   按空格分成数组
         encode_ids = [int(id_) for id_ in encode.split()]
         decode_ids = [int(id_) for id_ in decode.split()]
         for bucket_id, (encode_max_size, decode_max_size) in enumerate(config.BUCKETS):
