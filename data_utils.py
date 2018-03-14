@@ -162,10 +162,26 @@ def token2id(data, mode):
         else:
             ids = []
             ids.extend(sentence2id(vocab, line,True))
+            ids = __remove_ids_data1(ids)
         if mode == "dec":
             ids.append(vocab["<\s>"])
         out_file.write(" ".join(str(id_) for id_ in ids) + "\n")
     out_file.close()
+
+
+def __remove_ids_data1(ids):
+    """
+    去掉id文件中的未知数据“1”
+    :param ids: []
+    :return:
+    """
+    ids = set(ids)
+    if ids.__len__() == 1 and not ids.isdisjoint([1]):
+        ids = list(ids)
+    elif not ids.isdisjoint([1]):
+        ids.remove(1)
+        ids = list(ids)
+    return ids
 
 
 def process_data():
