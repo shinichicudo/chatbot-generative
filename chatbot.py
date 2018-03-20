@@ -382,6 +382,7 @@ def web_chat(ask):
     return response
 
 def main():
+    config_util.load_config_dict()
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices={"train", "chat"},
                         default="train",
