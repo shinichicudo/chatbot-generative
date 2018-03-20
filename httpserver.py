@@ -7,11 +7,19 @@ from urllib.parse import urlparse
 import json
 import os, sys
 
+import chatbot as cb
+
 class MyRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        mpath=urlparse(self.path) # ?分割
-
-        self.do_action(mpath)
+        response_dict = {}
+        path = self.path  # path
+        print(path)
+        if path == '/index':
+            response_dict['code'] = '0'
+            response_dict['status'] = 'UP'
+            self.outputtxt(json.dumps(response_dict, ensure_ascii=False))
+        else:
+            self.do_action(path)
 
     def do_POST(self):
         mpath=urlparse(self.path)
@@ -24,20 +32,23 @@ class MyRequestHandler(BaseHTTPRequestHandler):
     def do_action(self, path, args_dict):
         response_dict = {}
         response_dict['code'] = '1'
+        response = ''
 
         if path == '/chatbot':
             response_dict['code'] = '0'
             if args_dict.get('type') == 'medical_chat':
-                response_dict['answer'] ='medical'
+                # response_dict['answer'] ='medical'
+                response = cb.web_chat(args_dict.get('question'))
             elif args_dict.get('type') == 'normal_chat':
-                response_dict['answer'] = 'normal'
+                # response_dict['answer'] = 'normal'
+                response = cb.web_chat(args_dict.get('question'))
             elif args_dict.get('type') == 'mix_chat':
-                response_dict['answer'] = 'mix'
+                # response_dict['answer'] = 'mix'
+                response = cb.web_chat(args_dict.get('question'))
             else:
                 response_dict['code'] = '1'
-        else:
-            response_dict['code'] = '1'
-        response_json = json.dumps(response_dict)
+            response_dict["result"] = response
+        response_json = json.dumps(response_dict, ensure_ascii=False)
         self.outputtxt(response_json)
 
     def outputtxt(self, content):

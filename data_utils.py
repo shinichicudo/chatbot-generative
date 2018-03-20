@@ -12,6 +12,7 @@ import jieba
 import numpy as np
 
 import config
+import config_util
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s',
@@ -70,8 +71,8 @@ def build_vocab(filename,is_question = True):
     Build vocabulary.
     :param filename: "train.enc" or "train.dec"
     """
-    in_path = os.path.join(config.DATA_PATH, filename)
-    out_path = os.path.join(config.DATA_PATH, "vocab.{}".format(filename[-3:]))
+    in_path = os.path.join(config_util.find_config(config.DATA_PATH), filename)
+    out_path = os.path.join(config_util.find_config(config.DATA_PATH), "vocab.{}".format(filename[-3:]))
     # Word frequency statistics
     # `vocab`: dict of <token, frequency> pairs.
     vocab = {}
@@ -85,7 +86,7 @@ def build_vocab(filename,is_question = True):
     # sorted_vocab <type "list">
     # 以value倒序排列  list<vocab.key>
     sorted_vocab = sorted(vocab, key=vocab.get, reverse=True)
-    exclude_path = os.path.join(config.DATA_PATH, 'exclude.enc')
+    exclude_path = os.path.join(config_util.find_config(config.DATA_PATH), 'exclude.enc')
 
     exclude_file = open(exclude_path, 'r', encoding='utf-8')
     exclude_list = []
@@ -148,10 +149,10 @@ def token2id(data, mode):
     in_path = data + "." + mode
     out_path = data + "_ids." + mode
     # Get the dict of word2id: `vocab`.
-    _, vocab = load_vocab(os.path.join(config.DATA_PATH, vocab_path))
-    in_file = open(os.path.join(config.DATA_PATH, in_path),
+    _, vocab = load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), vocab_path))
+    in_file = open(os.path.join(config_util.find_config(config.DATA_PATH), in_path),
                    encoding="utf-8")
-    out_file = open(os.path.join(config.DATA_PATH, out_path), "w")
+    out_file = open(os.path.join(config_util.find_config(config.DATA_PATH), out_path), "w")
     lines = in_file.read().splitlines()
     # `lines` is a list of sentence strings, e.g., ["hello!", "how are you?"]
     in_file.close()
@@ -191,7 +192,7 @@ def process_data():
     logging.info("Building vocabulary for decoder inputs...")
     dec_vocab_size = build_vocab("train.dec",is_question=False)
     vocab_size = {"encoder": enc_vocab_size, "decoder": dec_vocab_size}
-    with open(os.path.join(config.DATA_PATH, "vocab_size.json"),
+    with open(os.path.join(config_util.find_config(config.DATA_PATH), "vocab_size.json"),
               "w", encoding="utf-8") as f:
         f.write(json.dumps(vocab_size, ensure_ascii=False))
     logging.info("Tokenizing encoder inputs of training data...")
@@ -214,8 +215,8 @@ def load_data(enc_filename, dec_filename):
         `data_buckets` is a list of lists. Each list is a bucket,
         and each bucket contains many <context, response> pairs.
     """
-    encode_file = open(os.path.join(config.DATA_PATH, enc_filename))
-    decode_file = open(os.path.join(config.DATA_PATH, dec_filename))
+    encode_file = open(os.path.join(config_util.find_config(config.DATA_PATH), enc_filename))
+    decode_file = open(os.path.join(config_util.find_config(config.DATA_PATH, dec_filename)))
     encode, decode = encode_file.readline(), decode_file.readline()
     data_buckets = [[] for _ in config.BUCKETS]
     i = 0

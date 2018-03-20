@@ -10,10 +10,15 @@ import sys
 import time
 from io import open
 
+import web
+import json
+import asyncio
+
 import numpy as np
 import tensorflow as tf
 
 import config
+import config_util
 import data_utils
 from model import ChatBotModel
 
@@ -23,6 +28,10 @@ logging.basicConfig(
 )
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+sess_dict = {}
+# 全局变量设置type
+SESS_TYPE = 'chat'
 
 
 def _get_random_bucket(train_buckets_scale):
@@ -132,7 +141,7 @@ def _get_skip_step(iteration):
 def check_restore_parameters(sess, saver):
     """ Restore the previously trained parameters if there are any. """
     ckpt = tf.train.get_checkpoint_state(os.path.dirname(
-        config.CPT_PATH + "/checkpoint"))
+        config_util.find_config(config.CPT_PATH) + "/checkpoint"))
     if ckpt and ckpt.model_checkpoint_path:
         logging.info("Loading parameters for the Chatbot...")
         saver.restore(sess, ckpt.model_checkpoint_path)
@@ -157,63 +166,6 @@ def _eval_test_set(sess, model, test_buckets):
                                    decoder_masks, bucket_id, True)
         logging.info("Test bucket {:d}: loss {:.4f}, time {:.4f}".format(
             bucket_id, step_loss, time.time() - start))
-
-
-def train():
-    """
-    Train the bot.
-    """
-    # test_buckets, data_buckets: <type "list">:
-    #     [[[[Context], [Response]], ], ]]
-    #     test_buckets[0]: first bucket
-    #     test_buckets[0][0]: first pair of the first bucket
-    #     test_buckets[0][0][0], test_buckets[0][0][1]: Context and response
-    #     test_buckets[0][0][0][0]: word index of the first words
-    # train_buckets_scale: list of increasing numbers from 0 to 1 that
-    #     we"ll use to select a bucket. len(train_buckets_scale) = len(BUCKETS)
-    test_buckets, data_buckets, train_buckets_scale = _get_buckets()
-
-    # in train mode, we need to create the backward path, so forward_only is False
-    model = ChatBotModel(False, config.BATCH_SIZE)
-    # build graph
-    model.build_graph()
-    saver = tf.train.Saver()
-
-    with tf.Session() as sess:
-        print("Running session...")
-        sess.run(tf.global_variables_initializer())
-        check_restore_parameters(sess, saver)
-
-        iteration = model.global_step.eval()
-        total_loss = 0
-        logging.info("Training...")
-        try:
-            while True:
-                skip_step = _get_skip_step(iteration)
-                bucket_id = _get_random_bucket(train_buckets_scale)
-                encoder_inputs, decoder_inputs, decoder_masks = data_utils.get_batch(
-                    data_buckets[bucket_id], bucket_id,
-                    batch_size=config.BATCH_SIZE)
-                start = time.time()
-                _, step_loss, _ = run_step(
-                    sess, model, encoder_inputs, decoder_inputs,
-                    decoder_masks, bucket_id, False)
-                total_loss += step_loss
-                iteration += 1
-
-                if iteration % skip_step == 0:
-                    logging.info("Training @ iter {:d}: loss {:.4f}, time {:.4f}".format(
-                        iteration, total_loss / skip_step, time.time() - start))
-                    total_loss = 0
-                    saver.save(sess, os.path.join(config.CPT_PATH, "chatbot"),
-                               global_step=model.global_step)
-                    if iteration % (10 * skip_step) == 0:
-                        logging.info("Testing...")
-                        # Run evals on development set and print their loss
-                        _eval_test_set(sess, model, test_buckets)
-                    sys.stdout.flush()
-        except KeyboardInterrupt:
-            logging.info("Training interrupted.")
 
 
 def _get_user_input():
@@ -256,23 +208,73 @@ def construct_response(output_logits, inv_dec_vocab):
     return "".join([inv_dec_vocab[output] for output in outputs])
 
 
+async def train():
+    """
+    Train the bot.
+    """
+    # test_buckets, data_buckets: <type "list">:
+    #     [[[[Context], [Response]], ], ]]
+    #     test_buckets[0]: first bucket
+    #     test_buckets[0][0]: first pair of the first bucket
+    #     test_buckets[0][0][0], test_buckets[0][0][1]: Context and response
+    #     test_buckets[0][0][0][0]: word index of the first words
+    # train_buckets_scale: list of increasing numbers from 0 to 1 that
+    #     we"ll use to select a bucket. len(train_buckets_scale) = len(BUCKETS)
+    test_buckets, data_buckets, train_buckets_scale = _get_buckets()
+    # in train mode, we need to create the backward path, so forward_only is False
+    model = ChatBotModel(False, config.BATCH_SIZE)
+    # build graph
+    model.build_graph()
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        print("Running session...")
+        sess.run(tf.global_variables_initializer())
+        check_restore_parameters(sess, saver)
+        iteration = model.global_step.eval()
+        total_loss = 0
+        logging.info("Training...")
+        try:
+            while True:
+                skip_step = _get_skip_step(iteration)
+                bucket_id = _get_random_bucket(train_buckets_scale)
+                encoder_inputs, decoder_inputs, decoder_masks = data_utils.get_batch(
+                    data_buckets[bucket_id], bucket_id,
+                    batch_size=config.BATCH_SIZE)
+                start = time.time()
+                _, step_loss, _ = run_step(
+                    sess, model, encoder_inputs, decoder_inputs,
+                    decoder_masks, bucket_id, False)
+                total_loss += step_loss
+                iteration += 1
+                if iteration % skip_step == 0:
+                    logging.info("Training @ iter {:d}: loss {:.4f}, time {:.4f}".format(
+                        iteration, total_loss / skip_step, time.time() - start))
+                    total_loss = 0
+                    saver.save(sess, os.path.join(config_util.find_config(config.CPT_PATH), "chatbot"),
+                               global_step=model.global_step)
+                    if iteration % (10 * skip_step) == 0:
+                        logging.info("Testing...")
+                        # Run evals on development set and print their loss
+                        _eval_test_set(sess, model, test_buckets)
+                    sys.stdout.flush()
+        except KeyboardInterrupt:
+            logging.info("Training interrupted.")
+
+
 def chat():
     """
     In test mode, we don"t to create the backward path.
     """
-    _, enc_vocab = data_utils.load_vocab(os.path.join(config.DATA_PATH, "vocab.enc"))
+    _, enc_vocab = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.enc"))
     # `inv_dec_vocab` <type "list">: id2word.
-    inv_dec_vocab, _ = data_utils.load_vocab(os.path.join(config.DATA_PATH, "vocab.dec"))
-
+    inv_dec_vocab, _ = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.dec"))
     model = ChatBotModel(True, batch_size=1)
     model.build_graph()
-
     saver = tf.train.Saver()
-
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         check_restore_parameters(sess, saver)
-        output_file = open(os.path.join(config.DATA_PATH, config.TERMINAL_OUTPUT),
+        output_file = open(os.path.join(config_util.find_config(config.DATA_PATH), config_util.find_config(config.TERMINAL_OUTPUT)),
                            "a+", encoding="utf-8")
         # Decode from standard input.
         max_length = config.BUCKETS[-1][0]
@@ -311,6 +313,74 @@ def chat():
         output_file.close()
 
 
+def start_chat():
+    """
+    启动chat模式
+    :return:
+    """
+    _, enc_vocab = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.enc"))
+    # `inv_dec_vocab` <type "list">: id2word.
+    inv_dec_vocab, _ = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.dec"))
+    model = ChatBotModel(True, batch_size=1)
+    model.build_graph()
+    saver = tf.train.Saver()
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
+    check_restore_parameters(sess, saver)
+    # Decode from standard input.
+    max_length = config.BUCKETS[-1][0]
+    print("Welcome to TensorBro. Say something. Enter to exit. Max length is",
+          max_length)
+    sess_dict[SESS_TYPE] = {'enc_vocab': enc_vocab, 'inv_dec_vocab': inv_dec_vocab, 'model': model, 'sess': sess,
+                           'max_length': max_length}
+
+
+def web_chat(ask):
+    """
+    http接口访问带参chat
+    :param ask: 问题
+    :return:
+    """
+    # 带入启动chat时设置的各个参数
+    enc_vocab = sess_dict[SESS_TYPE]["enc_vocab"]
+    inv_dec_vocab = sess_dict[SESS_TYPE]["inv_dec_vocab"]
+    max_length = sess_dict[SESS_TYPE]["max_length"]
+    sess = sess_dict[SESS_TYPE]["sess"]
+    model = sess_dict[SESS_TYPE]["model"]
+    # 定义chat写入的指定文件
+    output_file = open(os.path.join(config_util.find_config(config.DATA_PATH), config_util.find_config(config.TERMINAL_OUTPUT)),
+                       "a+", encoding="utf-8")
+
+    line = ask  # 接受问题参数
+    if hasattr(line, "decode"):
+        # If using Python 2
+        # FIXME: UnicodeError when deleting Chinese in terminal.
+        line = line.decode("utf-8")
+    if len(line) > 0 and line[-1] == "\n":
+        line = line[:-1]
+    if not line:
+        return 'Please input ask'
+    output_file.write("HUMAN ++++ " + line + "\n")
+    # Get token-ids for the input sentence.
+    token_ids = data_utils.sentence2id(enc_vocab, line,)
+    if len(token_ids) > max_length:
+        print("Max length I can handle is:", max_length)
+        # line = _get_user_input()
+    # Which bucket does it belong to?
+    bucket_id = find_right_bucket(len(token_ids))
+    # Get a 1-element batch to feed the sentence to the model.
+    encoder_inputs, decoder_inputs, decoder_masks = data_utils.get_batch(
+        [(token_ids, [])], bucket_id, batch_size=1)
+    # Get output logits for the sentence.
+    _, _, output_logits = run_step(sess, model, encoder_inputs,
+                                   decoder_inputs, decoder_masks,
+                                   bucket_id, True)
+    response = construct_response(output_logits, inv_dec_vocab)
+    output_file.write("BOT ++++ " + response + "\n")
+    output_file.write("=============================================\n")
+    output_file.close()
+    return response
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices={"train", "chat"},
@@ -318,17 +388,51 @@ def main():
                         help="mode. if not specified, it's in the train mode")
     args = parser.parse_args()
 
-    if not os.path.exists(os.path.join(config.DATA_PATH, "test_ids.dec")):
+    if not os.path.exists(os.path.join(config_util.find_config(config.DATA_PATH), "test_ids.dec")):
         data_utils.process_data()
     print("Data ready!")
     # create checkpoints folder if there isn't one already
-    data_utils.make_dir(config.CPT_PATH)
+    data_utils.make_dir(config_util.find_config(config.CPT_PATH))
 
     if args.mode == "train":
-        train()
+        train_run = train()
+        loop = asyncio.get_event_loop()
+        loop.ru(train_run)
+        print('SUCCESS')
     elif args.mode == "chat":
         chat()
 
 
+class Chatbot:
+    def GET(self, name):
+        web.header('Content-Type', 'application/json')
+        if not name or name == "index":
+            return json.dumps({'status': 'UP'})
+        return name
+
+
+class Mode:
+    """
+    分模式专用类
+    """
+    def GET(self):
+        web.header('Content-Type', 'application/json')
+        input = web.input(mode=None,ask=None)
+        if input.mode == 'train' and not input.ask:  # 模式为train，且没问题
+            train()
+            return 'already turn to Train mode'
+        elif input.mode == 'chat' and input.ask:    # 模式为chat，且有问题
+            return web_chat(input.ask)
+        else:
+            return 'Please input right mode and ask'
+
+
 if __name__ == "__main__":
     main()
+    # 接口访问
+    # urls = (
+    #     '/--mode','Mode',
+    #     '/(.*)', 'Chatbot'
+    # )
+    # app = web.application(urls, globals())
+    # app.run()

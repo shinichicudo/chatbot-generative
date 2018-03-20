@@ -11,6 +11,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import rnn
 
 import config
+import config_util
 
 # TODO: fix unknown token; add dropout; decay learning rate; apply beam search.
 
@@ -154,7 +155,7 @@ class ChatBotModel(object):
         print("Initializing new model...")
         self.fw_only = forward_only
         self.batch_size = batch_size
-        with open(os.path.join(config.DATA_PATH, "vocab_size.json"), "r") as f:
+        with open(os.path.join(config_util.find_config(config.DATA_PATH), "vocab_size.json"), "r") as f:
             self.vocab_size = json.load(f)
 
     def _create_placeholders(self):

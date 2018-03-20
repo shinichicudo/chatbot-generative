@@ -7,6 +7,7 @@ import tensorflow as tf
 import itchat
 from itchat.content import *
 import config
+import config_util
 import data_utils
 from model import ChatBotModel
 from chatbot import check_restore_parameters
@@ -15,9 +16,9 @@ from chatbot import run_step
 from chatbot import construct_response
 
 sess = tf.InteractiveSession()
-_, enc_vocab = data_utils.load_vocab(os.path.join(config.DATA_PATH, "vocab.enc"))
+_, enc_vocab = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.enc"))
 # `inv_dec_vocab` <type "list">: id2word.
-inv_dec_vocab, __ = data_utils.load_vocab(os.path.join(config.DATA_PATH, "vocab.dec"))
+inv_dec_vocab, __ = data_utils.load_vocab(os.path.join(config_util.find_config(config.DATA_PATH), "vocab.dec"))
 model = ChatBotModel(True, batch_size=1)
 model.build_graph()
 saver = tf.train.Saver()
@@ -82,7 +83,7 @@ def wechat_pic(msg):
 
 # write chat records to file
 def write_wechat_records(query, response):
-    output_file = open(os.path.join(config.DATA_PATH, config.WECHAT_OUTPUT),"a+", encoding="utf-8")
+    output_file = open(os.path.join(config_util.find_config(config.DATA_PATH), config_util.find_config(config.WECHAT_OUTPUT)),"a+", encoding="utf-8")
     output_file.write("HUMAN ++++ " + str(query) + "\n")
     output_file.write("BOT ++++ " + str(response) + "\n")
 
